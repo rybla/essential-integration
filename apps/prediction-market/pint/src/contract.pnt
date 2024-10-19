@@ -1,0 +1,54 @@
+use std::lib::PredicateAddress;
+use std::lib::@delta;
+use std::lib::@safe_increment;
+use std::lib::@init_once;
+use std::lib::@init_delta;
+use std::lib::@mut_keys;
+use std::auth::@verify_key;
+use std::lib::Secp256k1Signature;
+use std::auth::@check_if_predicate_owns;
+
+storage {
+  user_balances: (b256 => int),
+  user_nonce: (b256 => int),
+
+  oracle_results: (b256 => int),
+  oracle_nonces: (b256 => int),
+
+  market_conditions: (b256 => PredicateAddress),
+  market_results: (b256 => int),
+  market_nonces: (b256 => int),
+}
+
+predicate CreateOracle {
+  pub var key: b256;
+
+  state nonce = mut storage::oracle_nonces[key];
+  state result = mut storage::oracle_results[key];
+
+  constraint @safe_increment(nonce);
+
+  // TODO: authorization
+}
+
+predicate CreateMarket {
+  pub var key: b256;
+  pub var cond_addr: PredicateAddress;
+
+  state nonce = mut storage::market_nonces[key];
+  state condition = mut storage::market_conditions[key];
+  state result = mut storage::market_results[key];
+
+  constraint @init_once(nonce; 1);
+  constraint @init_once(result; nil);
+  constraint @init_once(condition; cond_addr);
+
+  // TODO: let the market creator determine what the initial odds are
+}
+
+predicate BetMarket {
+  
+}
+
+predicate ResolveMarket {}
+

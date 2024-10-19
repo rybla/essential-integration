@@ -3,6 +3,6 @@ name = "prediction-market"
 kind = "contract"
 
 [dependencies]
-std = { path = "../../../std" }
+std = { path = "../../std" }
 
 [contract-dependencies]
