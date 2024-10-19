@@ -4,6 +4,7 @@ members = [
     "apps/utils",
     "apps/token/app",
     "apps/counter/app",
+    "apps/prediction-market/app",
 ]
 resolver = "2"
 

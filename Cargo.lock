@@ -1885,6 +1885,30 @@ dependencies = [
 ]
 
 [[package]]
+name = "prediction-market"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "clap",
+ "essential-app-utils",
+ "essential-builder",
+ "essential-builder-db",
+ "essential-hash 0.4.0",
+ "essential-node",
+ "essential-rest-client",
+ "essential-sign 0.4.0",
+ "essential-signer",
+ "essential-types 0.3.0",
+ "essential-wallet",
+ "hex",
+ "pint-abi",
+ "rpassword",
+ "serde_json",
+ "tokio",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "proc-macro2"
 version = "1.0.87"
 source = "registry+https://github.com/rust-lang/crates.io-index"
