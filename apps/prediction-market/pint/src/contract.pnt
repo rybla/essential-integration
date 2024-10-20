@@ -14,7 +14,8 @@ use std::auth::@check_if_predicate_owns;
 
 union Resolution = Unresolved | Resolved(bool);
 
-union MarketCondition = Trivial | Oracle(b256);
+// union MarketCondition = Oracle(b256);
+type MarketCondition = b256;
 
 // -----------------------------------------------------------------------------
 // storage
@@ -29,7 +30,11 @@ storage {
 
   market_conditions: (b256 => MarketCondition),
   market_resolutions: (b256 => Resolution),
+  market_balances: (b256 => int),
   market_nonces: (b256 => int),
+  // for sake of demo, a market can only be bet on by two users, one for each position
+  market_users_yes: (b256 => b256),
+  market_users_no: (b256 => b256),
 }
 
 // -----------------------------------------------------------------------------
@@ -73,15 +78,103 @@ predicate InitMarket {
   state nonce = mut storage::market_nonces[key];
   state condition = mut storage::market_conditions[key];
   state resolution = mut storage::market_resolutions[key];
+  state balance = mut storage::market_balances[key];
 
   constraint @init_once(nonce; 1);
   constraint @init_once(resolution; Resolution::Unresolved);
   constraint @init_once(condition; new_condition);
+  constraint @init_once(balance; 0);
   // TODO: temporarily removed `resolution` from signature since i couldnt figure out how to serialize it into Vec<Word>
   constraint @verify_key({key, nonce'}; sig; key);
 }
 
-predicate BetMarket {}
+predicate BetYes {
+  pub var user_key: b256;
+  pub var market_key: b256;
+  pub var amount: int;
 
-predicate ResolveMarket {}
+  var sig: Secp256k1Signature;
 
+  state nonce = mut storage::market_nonces[market_key];
+  state user_balance = mut storage::user_balances[user_key];
+  state market_user_yes = mut storage::market_users_yes[market_key];
+  state market_balance = mut storage::market_balances[market_key];
+
+  constraint @safe_increment(nonce);
+  constraint amount > 0;
+  constraint user_balance' == user_balance - amount;
+  constraint user_balance' >= 0;
+  constraint market_balance' == market_balance + amount;
+  constraint @init_once(market_user_yes; user_key);
+  constraint @verify_key({user_key, market_key, amount, nonce'}; sig; user_key);
+}
+
+predicate BetNo {
+  pub var user_key: b256;
+  pub var market_key: b256;
+  pub var amount: int;
+
+  var sig: Secp256k1Signature;
+  var market_resolution: Resolution;
+
+  state nonce = mut storage::market_nonces[market_key];
+  state user_balance = mut storage::user_balances[user_key];
+  state market_user_no = mut storage::market_users_no[market_key];
+  state market_balance = mut storage::market_balances[market_key];
+  state market_resolution_state = mut storage::market_resolutions[market_key];
+
+  constraint @safe_increment(nonce);
+  constraint market_resolution_state == market_resolution;
+  constraint match market_resolution {
+    Resolution::Unresolved => true,
+    Resolution::Resolved(_) => false,
+  };
+  constraint amount > 0;
+  constraint user_balance' == user_balance - amount;
+  constraint user_balance' >= 0;
+  constraint market_balance' == market_balance + amount;
+  constraint @init_once(market_user_no; user_key);
+  constraint @verify_key({user_key, market_key, amount, nonce'}; sig; user_key);
+}
+
+predicate ResolveMarket {
+  pub var key: b256;
+
+  var sig: Secp256k1Signature;
+
+  state nonce = mut storage::market_nonces[key];
+  state market_resolution = mut storage::market_resolutions[key];
+  state market_condition = storage::market_conditions[key];
+  state oracle_resolution = storage::oracle_resolutions[market_condition];
+
+  constraint market_resolution' == oracle_resolution;
+  constraint @verify_key({key, nonce'}; sig; key);
+}
+
+predicate PayoutResolvedMarket {
+  pub var key: b256;
+
+  var sig: Secp256k1Signature;
+  var market_resolution: Resolution;
+
+  state nonce = mut storage::market_nonces[key];
+  state market_balance = mut storage::market_balances[key];
+  state market_user_yes = storage::market_users_yes[key];
+  state user_balance_yes = mut storage::user_balances[market_user_yes];
+  state market_user_no = storage::market_users_no[key];
+  state user_balance_no = mut storage::user_balances[market_user_no];
+  state market_resolution_state = storage::market_resolutions[key];
+
+  // payout based on resolution
+  constraint match market_resolution {
+    Resolution::Unresolved => false,
+    Resolution::Resolved(b) =>
+      b ? 
+        user_balance_yes' == user_balance_yes + market_balance &&
+        market_balance' == 0
+      :
+        user_balance_no' == user_balance_no + market_balance &&
+        market_balance' == 0,
+  };
+  constraint @verify_key({key, nonce'}; sig; key);
+}
