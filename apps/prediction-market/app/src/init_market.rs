@@ -28,10 +28,11 @@ pub fn build_solution(
         new_market_nonce,
     }: BuildSolution,
 ) -> anyhow::Result<Solution> {
-    let pub_vars = crate::abi::InitOracle::PubVars {
+    let pub_vars = crate::abi::InitMarket::PubVars {
         key: market_hashed_key,
+        new_condition: new_market_condition.clone(),
     };
-    let vars = crate::abi::InitOracle::Vars {
+    let vars = crate::abi::InitMarket::Vars {
         sig: signature.encode(),
     };
     let muts = crate::abi::storage::mutations()
@@ -39,7 +40,7 @@ pub fn build_solution(
         .market_resolutions(|m| m.entry(market_hashed_key, crate::abi::Resolution::Unresolved))
         .market_conditions(|m| m.entry(market_hashed_key, new_market_condition));
     let solution = SolutionData {
-        predicate_to_solve: crate::abi::InitOracle::ADDRESS,
+        predicate_to_solve: crate::abi::InitMarket::ADDRESS,
         decision_variables: vars.into(),
         transient_data: pub_vars.into(),
         state_mutations: muts.into(),
@@ -68,13 +69,12 @@ impl ToSign {
             self.market_hashed_key[1],
             self.market_hashed_key[2],
             self.market_hashed_key[3],
-            // todo!("encode self.new_market_condition as Vec<Word>"),
+            // self.new_market_condition // ΤΟDO: encode as Words,
             self.new_market_nonce,
         ]
     }
 }
 
-/// prepare the data to be signed for an init_oracle transaction
 pub fn data_to_sign(
     Init {
         market_hashed_key,

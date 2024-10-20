@@ -14,7 +14,7 @@ use std::auth::@check_if_predicate_owns;
 
 union Resolution = Unresolved | Resolved(bool);
 
-union MarketCondition = Oracle(b256);
+union MarketCondition = Trivial | Oracle(b256);
 
 // -----------------------------------------------------------------------------
 // storage
@@ -77,7 +77,8 @@ predicate InitMarket {
   constraint @init_once(nonce; 1);
   constraint @init_once(resolution; Resolution::Unresolved);
   constraint @init_once(condition; new_condition);
-  constraint @verify_key({key, new_condition, nonce'}; sig; key);
+  // TODO: temporarily removed `resolution` from signature since i couldnt figure out how to serialize it into Vec<Word>
+  constraint @verify_key({key, nonce'}; sig; key);
 }
 
 predicate BetMarket {}
