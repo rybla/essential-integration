@@ -44,25 +44,29 @@ predicate InitOracle {
 
   constraint @init_once(nonce; 1);
   constraint @init_once(resolution; Resolution::Unresolved);
-
-  // TODO: authorization
+  constraint @verify_key({key, nonce'}; sig; key);
 }
 
 predicate ResolveOracle {
   pub var key: b256;
   pub var new_resolution: bool;
+  
+  var sig: Secp256k1Signature;
 
   state nonce = mut storage::oracle_nonces[key];
   state resolution = mut storage::oracle_resolutions[key];
 
   constraint nonce == 1;
-  constraint nonce' == nonce + 1;
+  constraint @safe_increment(nonce);
   constraint resolution' == Resolution::Resolved(new_resolution);
+  constraint @verify_key({key, resolution, nonce'}; sig; key);
 }
 
-predicate CreateMarket {
+predicate InitMarket {
   pub var key: b256;
-  pub var cond_addr: PredicateAddress;
+  pub var new_condition: PredicateAddress;
+  
+  var sig: Secp256k1Signature;
 
   state nonce = mut storage::market_nonces[key];
   state condition = mut storage::market_conditions[key];
@@ -70,9 +74,8 @@ predicate CreateMarket {
 
   constraint @init_once(nonce; 1);
   constraint @init_once(resolution; Resolution::Unresolved);
-  constraint @init_once(condition; cond_addr);
-
-  // TODO: let the market creator determine what the initial odds are
+  constraint @init_once(condition; new_condition);
+  constraint @verify_key({key, new_condition, nonce'}; sig; key);
 }
 
 predicate BetMarket {}
