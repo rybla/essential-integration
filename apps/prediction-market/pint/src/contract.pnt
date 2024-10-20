@@ -66,18 +66,18 @@ predicate ResolveOracle {
 
 predicate InitMarket {
   pub var key: b256;
-  pub var new_market_condition: MarketCondition;
+  pub var new_condition: MarketCondition;
   
   var sig: Secp256k1Signature;
 
   state nonce = mut storage::market_nonces[key];
-  state market_condition = mut storage::market_conditions[key];
+  state condition = mut storage::market_conditions[key];
   state resolution = mut storage::market_resolutions[key];
 
   constraint @init_once(nonce; 1);
   constraint @init_once(resolution; Resolution::Unresolved);
-  constraint @init_once(market_condition; new_market_condition);
-  constraint @verify_key({key, new_market_condition, nonce'}; sig; key);
+  constraint @init_once(condition; new_condition);
+  constraint @verify_key({key, new_condition, nonce'}; sig; key);
 }
 
 predicate BetMarket {}

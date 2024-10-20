@@ -45,6 +45,27 @@ pub fn oracle_resolution_key(hashed_key: HashedKey) -> Key {
     keys.into_iter().next().expect("Must be a key")
 }
 
+pub fn market_nonce_key(hashed_key: HashedKey) -> Key {
+    let keys: Vec<_> = abi::storage::keys::keys()
+        .market_nonces(|e| e.entry(hashed_key))
+        .into();
+    keys.into_iter().next().expect("Must be a key")
+}
+
+pub fn market_resolution_key(hashed_key: HashedKey) -> Key {
+    let keys: Vec<_> = abi::storage::keys::keys()
+        .market_resolutions(|e| e.entry(hashed_key))
+        .into();
+    keys.into_iter().next().expect("Must be a key")
+}
+
+pub fn market_condition_key(hashed_key: HashedKey) -> Key {
+    let keys: Vec<_> = abi::storage::keys::keys()
+        .market_conditions(|e| e.entry(hashed_key))
+        .into();
+    keys.into_iter().next().expect("Must be a key")
+}
+
 pub fn from_query_resolution(query: &Query<Resolution>) -> anyhow::Result<Resolution> {
     let r = match &query.0 {
         Some(resolution) => match &resolution[..] {

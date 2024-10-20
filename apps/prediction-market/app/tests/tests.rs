@@ -1,20 +1,107 @@
 use std::marker::PhantomData;
 
-use essential_app_utils::{self as utils, compile::compile_pint_project};
+use essential_app_utils::{self as utils, compile::compile_pint_project, db::Dbs};
 use essential_signer::Signature;
-use essential_types::{convert::word_4_from_u8_32, Word};
+use essential_types::{contract::Contract, convert::word_4_from_u8_32, solution::Solution, Word};
 use essential_wallet::Wallet;
 use prediction_market::{abi::Resolution, Query};
-// use token::Query;
+
+const ORACLE1_PRIVATE_KEY: &str =
+    "128A3D2146A69581FD8FC4C0A9B7A96A5755D85255D4E47F814AFA69D7726C8D";
+const ORACLE1_NAME: &str = "oracle1";
+
+const MARKET1_PRIVATE_KEY: &str =
+    "898998567FD8SF8FS6D7F54S67D7SA8DG9SDFS89D7SA86D5ADSF7F78FSAAD98D";
+const MARKET1_NAME: &str = "market1";
+
+struct SetupStuff {
+    pub dbs: Dbs,
+    pub contract: Contract,
+    pub wallet: Wallet,
+    pub oracle1_key: Vec<u8>,
+    pub oracle1_hashed_key: [Word; 4],
+    pub oracle1_nonce_key: Vec<Word>,
+    pub oracle1_resolution_key: Vec<Word>,
+    pub market1_key: Vec<u8>,
+    pub market1_nonce_key: Vec<Word>,
+    pub market1_resolution_key: Vec<Word>,
+    pub market1_condition_key: Vec<Word>,
+}
+
+async fn setup_test() -> SetupStuff {
+    // Create new databases for testing
+    let dbs = utils::db::new_dbs().await;
+
+    let transfer = compile_pint_project(concat!(env!("CARGO_MANIFEST_DIR"), "/../pint").into())
+        .await
+        .unwrap();
+
+    // temporary wallet for testing
+    let mut wallet = essential_wallet::Wallet::temp().unwrap();
+
+    // setup oracle1
+    let oracle1_key = hex::decode(ORACLE1_PRIVATE_KEY).unwrap();
+    wallet
+        .insert_key(
+            ORACLE1_NAME,
+            essential_signer::Key::Secp256k1(
+                essential_signer::secp256k1::SecretKey::from_slice(&oracle1_key).unwrap(),
+            ),
+        )
+        .unwrap();
+    let oracle1_hashed_key = hash_key(&mut wallet, ORACLE1_NAME);
+    let oracle1_nonce_key = prediction_market::oracle_nonce_key(oracle1_hashed_key);
+    let oracle1_resolution_key = prediction_market::oracle_resolution_key(oracle1_hashed_key);
+
+    // setup market1
+    let market1_key = hex::decode(MARKET1_PRIVATE_KEY).unwrap();
+    wallet
+        .insert_key(
+            MARKET1_NAME,
+            essential_signer::Key::Secp256k1(
+                essential_signer::secp256k1::SecretKey::from_slice(&market1_key).unwrap(),
+            ),
+        )
+        .unwrap();
+    let market1_hashed_key = hash_key(&mut wallet, MARKET1_NAME);
+    let market1_nonce_key = prediction_market::market_nonce_key(market1_hashed_key);
+    let market1_resolution_key = prediction_market::market_resolution_key(market1_hashed_key);
+    let market1_condition_key = prediction_market::market_condition_key(market1_hashed_key);
+    SetupStuff {
+        dbs,
+        contract: transfer,
+        wallet,
+        oracle1_key,
+        oracle1_hashed_key,
+        oracle1_nonce_key,
+        oracle1_resolution_key,
+        market1_key,
+        market1_nonce_key,
+        market1_resolution_key,
+        market1_condition_key,
+    }
+}
+
+async fn process_solution(dbs: &Dbs, solution: Solution) {
+    // submit the solution
+    utils::builder::submit(&dbs.builder, solution.clone())
+        .await
+        .unwrap();
+
+    // validate the solution
+    utils::node::validate_solution(&dbs.node, solution.clone())
+        .await
+        .unwrap();
+
+    // Build a block
+    let o = utils::builder::build_default(&dbs).await.unwrap();
+    assert!(o.failed.is_empty(), "{:?}", o.failed);
+}
 
 #[tokio::test]
 async fn test_create_oracle() {
     // Initialize tracing for better debugging
     tracing_subscriber::fmt::init();
-
-    // parameters
-    let oracle_private_key = "128A3D2146A69581FD8FC4C0A9B7A96A5755D85255D4E47F814AFA69D7726C8D";
-    let oracle_name = "my_oracle";
 
     // Create new databases for testing
     let dbs = utils::db::new_dbs().await;
@@ -32,16 +119,16 @@ async fn test_create_oracle() {
     let mut wallet = essential_wallet::Wallet::temp().unwrap();
 
     // setup Oracle account
-    let oracle_key = hex::decode(oracle_private_key).unwrap();
+    let oracle_key = hex::decode(ORACLE1_PRIVATE_KEY).unwrap();
     wallet
         .insert_key(
-            oracle_name,
+            ORACLE1_NAME,
             essential_signer::Key::Secp256k1(
                 essential_signer::secp256k1::SecretKey::from_slice(&oracle_key).unwrap(),
             ),
         )
         .unwrap();
-    let oracle_hashed_key = hash_key(&mut wallet, oracle_name);
+    let oracle_hashed_key = hash_key(&mut wallet, ORACLE1_NAME);
 
     let oracle_nonce_key = prediction_market::oracle_nonce_key(oracle_hashed_key);
     let oracle_nonce_query: Query<Word> = Query(
@@ -73,8 +160,9 @@ async fn test_create_oracle() {
         oracle_nonce_query: oracle_nonce_query.clone(),
     };
     let to_sign = prediction_market::init_oracle::data_to_sign(init).unwrap();
-    let Signature::Secp256k1(signature) =
-        wallet.sign_words(&to_sign.to_words(), oracle_name).unwrap()
+    let Signature::Secp256k1(signature) = wallet
+        .sign_words(&to_sign.to_words(), ORACLE1_NAME)
+        .unwrap()
     else {
         panic!("invalid signature")
     };
