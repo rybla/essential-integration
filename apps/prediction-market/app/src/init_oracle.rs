@@ -1,7 +1,6 @@
 use essential_app_utils::inputs::Encode;
 use essential_sign::secp256k1::ecdsa::RecoverableSignature;
 use essential_types::{
-    convert::word_4_from_u8_32,
     solution::{Solution, SolutionData},
     Word,
 };

@@ -5,6 +5,7 @@ use anyhow::bail;
 use essential_types::{Key, Value, Word};
 
 pub mod init_oracle;
+pub mod resolve_oracle;
 
 /// Represents a query result, which may or may not contain a value.
 #[derive(Clone)]
