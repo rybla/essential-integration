@@ -4,12 +4,15 @@ use abi::Resolution;
 use anyhow::bail;
 use essential_types::{Key, Value, Word};
 
+pub mod init_market;
 pub mod init_oracle;
 pub mod resolve_oracle;
 
 /// Represents a query result, which may or may not contain a value.
 #[derive(Clone)]
 pub struct Query<T>(pub Option<Value>, pub PhantomData<T>);
+
+pub type HashedKey = [Word; 4];
 
 pub mod abi {
     pint_abi::gen_from_file! {
@@ -19,7 +22,7 @@ pub mod abi {
 }
 
 /// Generates the key for querying a user's nonce.
-pub fn user_nonce_key(hashed_key: [Word; 4]) -> Key {
+pub fn user_nonce_key(hashed_key: HashedKey) -> Key {
     let keys: Vec<_> = abi::storage::keys::keys()
         .user_nonces(|e| e.entry(hashed_key))
         .into();
@@ -27,7 +30,7 @@ pub fn user_nonce_key(hashed_key: [Word; 4]) -> Key {
 }
 
 /// Generates the key for querying an oracle's nonce.
-pub fn oracle_nonce_key(hashed_key: [Word; 4]) -> Key {
+pub fn oracle_nonce_key(hashed_key: HashedKey) -> Key {
     let keys: Vec<_> = abi::storage::keys::keys()
         .oracle_nonces(|e| e.entry(hashed_key))
         .into();
@@ -35,7 +38,7 @@ pub fn oracle_nonce_key(hashed_key: [Word; 4]) -> Key {
 }
 
 /// Generates the key for querying an oracle's result.
-pub fn oracle_resolution_key(hashed_key: [Word; 4]) -> Key {
+pub fn oracle_resolution_key(hashed_key: HashedKey) -> Key {
     let keys: Vec<_> = abi::storage::keys::keys()
         .oracle_resolutions(|e| e.entry(hashed_key))
         .into();
@@ -66,6 +69,3 @@ pub fn from_query_word(query: &Query<Word>) -> anyhow::Result<Word> {
     };
     Ok(r)
 }
-
-// CreateOracle
-// TODO
