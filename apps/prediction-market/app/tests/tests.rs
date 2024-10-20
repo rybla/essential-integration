@@ -4,7 +4,7 @@ use essential_app_utils::{self as utils, compile::compile_pint_project};
 use essential_signer::Signature;
 use essential_types::{convert::word_4_from_u8_32, Word};
 use essential_wallet::Wallet;
-use prediction_market::Query;
+use prediction_market::{abi::Resolution, Query};
 // use token::Query;
 
 #[tokio::test]
@@ -55,18 +55,18 @@ async fn test_create_oracle() {
         PhantomData,
     );
 
-    let oracle_result_key = prediction_market::oracle_result_key(oracle_hashed_key);
-    let oracle_result_query: Query<Word> = Query(
+    let oracle_resolution_key = prediction_market::oracle_resolution_key(oracle_hashed_key);
+    let oracle_resolution_query: Query<Word> = Query(
         utils::node::query_state_head(
             &dbs.node,
             &prediction_market::abi::ADDRESS,
-            &oracle_result_key,
+            &oracle_resolution_key,
         )
         .await
         .unwrap(),
         PhantomData,
     );
-    let oracle_result = prediction_market::from_query_word(&oracle_result_query).unwrap();
+    let oracle_resolution = prediction_market::from_query_word(&oracle_resolution_query).unwrap();
 
     let init = prediction_market::init_oracle::Init {
         oracle_hashed_key,
@@ -106,21 +106,207 @@ async fn test_create_oracle() {
         assert!(o.failed.is_empty(), "{:?}", o.failed);
     }
 
-    // verify oracle exists
-    let oracle_result_key = prediction_market::oracle_result_key(oracle_hashed_key);
-    let oracle_result_query: Query<prediction_market::abi::Resolution> = Query(
+    // assert that oracle was initialized properly
+    let oracle_resolution_key = prediction_market::oracle_resolution_key(oracle_hashed_key);
+    let oracle_resolution_query: Query<prediction_market::abi::Resolution> = Query(
         utils::node::query_state_head(
             &dbs.node,
             &prediction_market::abi::ADDRESS,
-            &oracle_result_key,
+            &oracle_resolution_key,
         )
         .await
         .unwrap(),
         PhantomData,
     );
     assert_eq!(
-        prediction_market::from_query_resolution(&oracle_result_query).unwrap(),
+        prediction_market::from_query_resolution(&oracle_resolution_query).unwrap(),
         prediction_market::abi::Resolution::Unresolved
+    );
+}
+
+#[tokio::test]
+async fn test_create_and_resolve_oracle() {
+    // parameters
+    let oracle_private_key = "128A3D2146A69581FD8FC4C0A9B7A96A5755D85255D4E47F814AFA69D7726C8D";
+    let oracle_name = "my_oracle";
+
+    // Create new databases for testing
+    let dbs = utils::db::new_dbs().await;
+
+    let transfer = compile_pint_project(concat!(env!("CARGO_MANIFEST_DIR"), "/../pint").into())
+        .await
+        .unwrap();
+
+    // deploy the token contract
+    essential_app_utils::deploy::deploy_contract(&dbs.builder, &transfer)
+        .await
+        .unwrap();
+
+    // temporary wallet for testing
+    let mut wallet = essential_wallet::Wallet::temp().unwrap();
+    let oracle_key = hex::decode(oracle_private_key).unwrap();
+    wallet
+        .insert_key(
+            oracle_name,
+            essential_signer::Key::Secp256k1(
+                essential_signer::secp256k1::SecretKey::from_slice(&oracle_key).unwrap(),
+            ),
+        )
+        .unwrap();
+    let oracle_hashed_key = hash_key(&mut wallet, oracle_name);
+
+    // InitOracle
+    let solution = {
+        let oracle_nonce_key = prediction_market::oracle_nonce_key(oracle_hashed_key);
+        let oracle_nonce_query: Query<Word> = Query(
+            utils::node::query_state_head(
+                &dbs.node,
+                &prediction_market::abi::ADDRESS,
+                &oracle_nonce_key,
+            )
+            .await
+            .unwrap(),
+            PhantomData,
+        );
+
+        let oracle_resolution_key = prediction_market::oracle_resolution_key(oracle_hashed_key);
+        let oracle_resolution_query: Query<Word> = Query(
+            utils::node::query_state_head(
+                &dbs.node,
+                &prediction_market::abi::ADDRESS,
+                &oracle_resolution_key,
+            )
+            .await
+            .unwrap(),
+            PhantomData,
+        );
+        let oracle_resolution =
+            prediction_market::from_query_word(&oracle_resolution_query).unwrap();
+
+        let init = prediction_market::init_oracle::Init {
+            oracle_hashed_key,
+            oracle_nonce_query: oracle_nonce_query.clone(),
+        };
+        let to_sign = prediction_market::init_oracle::data_to_sign(init).unwrap();
+        let Signature::Secp256k1(signature) =
+            wallet.sign_words(&to_sign.to_words(), oracle_name).unwrap()
+        else {
+            panic!("invalid signature")
+        };
+
+        // construct solution
+        prediction_market::init_oracle::build_solution(
+            prediction_market::init_oracle::BuildSolution {
+                oracle_hashed_key,
+                new_oracle_nonce: prediction_market::from_query_word(&oracle_nonce_query).unwrap()
+                    + 1,
+                new_oracle_resolution: prediction_market::abi::Resolution::Unresolved,
+                signature,
+            },
+        )
+        .unwrap()
+    };
+
+    // submit the solution
+    utils::builder::submit(&dbs.builder, solution.clone())
+        .await
+        .unwrap();
+
+    // validate the solution
+    utils::node::validate_solution(&dbs.node, solution.clone())
+        .await
+        .unwrap();
+
+    // Build a block
+    {
+        let o = utils::builder::build_default(&dbs).await.unwrap();
+        assert!(o.failed.is_empty(), "{:?}", o.failed);
+    }
+
+    // ResolveOracle
+    let solution = {
+        let oracle_nonce_key = prediction_market::oracle_nonce_key(oracle_hashed_key);
+        let oracle_nonce_query: Query<Word> = Query(
+            utils::node::query_state_head(
+                &dbs.node,
+                &prediction_market::abi::ADDRESS,
+                &oracle_nonce_key,
+            )
+            .await
+            .unwrap(),
+            PhantomData,
+        );
+
+        let oracle_resolution_key = prediction_market::oracle_resolution_key(oracle_hashed_key);
+        let oracle_resolution_query: Query<Resolution> = Query(
+            utils::node::query_state_head(
+                &dbs.node,
+                &prediction_market::abi::ADDRESS,
+                &oracle_resolution_key,
+            )
+            .await
+            .unwrap(),
+            PhantomData,
+        );
+        let oracle_resolution =
+            prediction_market::from_query_resolution(&oracle_resolution_query).unwrap();
+
+        let init = prediction_market::resolve_oracle::Init {
+            oracle_hashed_key,
+            oracle_nonce_query: oracle_nonce_query.clone(),
+            new_resolution: true,
+        };
+        let to_sign = prediction_market::resolve_oracle::data_to_sign(init).unwrap();
+        let Signature::Secp256k1(signature) =
+            wallet.sign_words(&to_sign.to_words(), oracle_name).unwrap()
+        else {
+            panic!("invalid signature")
+        };
+
+        // construct solution
+        prediction_market::resolve_oracle::build_solution(
+            prediction_market::resolve_oracle::BuildSolution {
+                oracle_hashed_key,
+                new_oracle_nonce: prediction_market::from_query_word(&oracle_nonce_query).unwrap()
+                    + 1,
+                signature,
+                new_resolution: true,
+            },
+        )
+        .unwrap()
+    };
+
+    // submit the solution
+    utils::builder::submit(&dbs.builder, solution.clone())
+        .await
+        .unwrap();
+
+    // validate the solution
+    utils::node::validate_solution(&dbs.node, solution.clone())
+        .await
+        .unwrap();
+
+    // Build a block
+    {
+        let o = utils::builder::build_default(&dbs).await.unwrap();
+        assert!(o.failed.is_empty(), "{:?}", o.failed);
+    }
+
+    // assert that oracle was resolved properly
+    let oracle_resolution_key = prediction_market::oracle_resolution_key(oracle_hashed_key);
+    let oracle_resolution_query: Query<prediction_market::abi::Resolution> = Query(
+        utils::node::query_state_head(
+            &dbs.node,
+            &prediction_market::abi::ADDRESS,
+            &oracle_resolution_key,
+        )
+        .await
+        .unwrap(),
+        PhantomData,
+    );
+    assert_eq!(
+        prediction_market::from_query_resolution(&oracle_resolution_query).unwrap(),
+        prediction_market::abi::Resolution::Resolved(true)
     );
 }
 

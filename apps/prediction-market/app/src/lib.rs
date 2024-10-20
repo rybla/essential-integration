@@ -35,7 +35,7 @@ pub fn oracle_nonce_key(hashed_key: [Word; 4]) -> Key {
 }
 
 /// Generates the key for querying an oracle's result.
-pub fn oracle_result_key(hashed_key: [Word; 4]) -> Key {
+pub fn oracle_resolution_key(hashed_key: [Word; 4]) -> Key {
     let keys: Vec<_> = abi::storage::keys::keys()
         .oracle_resolutions(|e| e.entry(hashed_key))
         .into();

@@ -59,7 +59,7 @@ predicate ResolveOracle {
   constraint nonce == 1;
   constraint @safe_increment(nonce);
   constraint resolution' == Resolution::Resolved(new_resolution);
-  constraint @verify_key({key, resolution, nonce'}; sig; key);
+  constraint @verify_key({key, new_resolution, nonce'}; sig; key);
 }
 
 predicate InitMarket {
